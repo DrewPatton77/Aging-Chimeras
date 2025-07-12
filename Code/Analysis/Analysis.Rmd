@@ -1,0 +1,1833 @@
+---
+title: "Analysis"
+author: "Drew Patton"
+date: "2024-07-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+
+# ======================== Initialize ========================================
+
+# Load all necessary packages.
+pkgs <- c("ggplot2","vroom","dplyr","forcats","tidyr","gridExtra","patchwork","ggpubr","ggrastr","ggdist","ggforce","scales","stringr","viridis","purrr","ggnewscale","ggseg")
+vapply(pkgs, library, logical(1), character.only = TRUE, logical.return = TRUE,quietly = TRUE)
+
+
+# Function to calculate mean and 95% confidence interval
+mean_ci <- function(x, conf = 0.95) {
+  n <- length(x)
+  m <- get_mode(x)
+  mu <- mean(x, na.rm = TRUE)
+  stderr <- sd(x, na.rm = TRUE) / sqrt(n)
+  error <- qt(conf / 2 + 0.5, df = n - 1) * stderr
+  c(mean = mu, lower = mu - error, upper = mu + error)
+}
+
+# Color scheme for the asynchronous, chimera, and synchronous, respectively.
+my_colors <- c("#54A6D2","#F4E40B","#AB2412") # Create custom colours for the synchrony classifications.
+Classes = c("Asynchronous","Chimera","Synchronous") # Synchrony classifications.
+
+# The Cognitive Systems.
+CS_names = c("Att","Aud","CO","FP","DM","MS","SC","VT","V") # Choose a cognitive system.
+
+# Read file
+data_file = 'Aging-Chimeras/Data/Patterns.txt'
+degree <- vroom(data_file, delim = ' ', col_types ='d')
+
+# The network measures.
+Measures = c("Degree","Strength","SDRC","Participation_Coefficient","Betweenness","Local_Efficiency","Nodal_Efficiency","Within","Between","System_Segregation")
+texts <- c("Degree","Strength","SDRC","PC","B/W","LE","NE","W","B","SySg")
+
+# Loop over the network measures to build a single dataframe containing each network measure.
+for (measure in Measures) {
+  
+  patterns <- vroom(paste("Aging-Chimeras/Data/",measure,'.txt',sep=''), delim = ' ', col_types = 'd')
+  
+  # Factor categorical variables
+  patterns <- patterns %>%
+    mutate(Subject = factor(Subject),
+           Research_Group = factor(Research_Group),
+           Brain_Region = factor(Brain_Region),
+           Cognitive_System = factor(Cognitive_System),
+           Lobe = factor(Lobe),
+           Classification = factor(Classification))
+  
+  if (i == 1){
+    all_Measures <- patterns
+    all_Measures[measure] <- patterns['Result']
+    } else {
+    all_Measures[measure] <- patterns['Result']
+  }
+}
+
+# Relabel the classification numbers as their labels.
+all_Measures <- all_Measures %>% mutate(
+  Classification = case_when(
+    Classification == 3 ~ "Sync",
+    Classification == 2 ~ "Chimera",
+    Classification == 1 ~ "Async",
+    TRUE ~ as.character(Classification)))
+
+# Factor the classifications.
+all_Measures <- all_Measures %>% mutate(Classification = factor(Classification))
+
+# Build a left and right hemisphere column.
+all_Measures <- all_Measures %>%
+mutate(
+  Hemisphere = case_when(
+    Brain_Region %in% c(1:7, 15:71) ~ "L",
+    Brain_Region %in% c(8:14, 72:128) ~ "R",
+    TRUE ~ NA_character_)) # Handle cases that don't meet the above conditions
+
+
+```
+
+
+```{r}
+
+# ============================= Fig. 4 =======================================
+
+
+patterns <- vroom('Aging-Chimeras/Data/Patterns.txt', delim = ' ', col_types = 'd')
+
+# Factor categorical variables
+patterns <- patterns %>%
+  mutate(Subject = factor(Subject),
+    Research_Group = factor(Research_Group),
+    Brain_Region = factor(Brain_Region),
+    Cognitive_System = factor(Cognitive_System),
+    Lobe = factor(Lobe),
+    Classification = factor(Classification))
+
+colors <- c("blue", "white", "red")
+my_colors <- c("#54A6D2","#F4E40B","#AB2412")
+#my_colors <- c("#54A6D2","#cc9a0c","#AB2412")
+
+simple_white_gold <- colorRampPalette(
+  colors = c("#FFFFFF", "#f2f27e", "#f2e30c", "#e6c400","#b3942e"),
+  interpolate = "spline"
+)
+n_colors <- 256
+colormap <- simple_white_gold(n_colors)
+
+Classes = c("Async","Chimera","Sync")
+
+patterns$age_group <- with(patterns, ifelse(Age < 30, "Young",
+ifelse(Age < 60, "Middle", "Old")))
+
+brprop <- patterns %>% group_by(age_group,Brain_Region) %>%
+  summarise(Async = sum(Classification == 1,na.rm=TRUE)/length(Classification),
+    Chimera = sum(Classification == 2,na.rm=TRUE)/length(Classification),
+    Sync = sum(Classification == 3,na.rm=TRUE)/length(Classification))
+
+brprop <- cbind(brprop,Brain_Region_Locations[2:5])
+
+Brain_Region_Labels <- vroom('Aging-Chimeras/Important_Files/Brain Region Labels 10k.txt',delim='\t',col_names = "Brain Region Labels")
+Brain_Region_Labels$last_char <- substr(Brain_Region_Labels[['Brain Region Labels']], nchar(Brain_Region_Labels[['Brain Region Labels']]), nchar(Brain_Region_Labels[['Brain Region Labels']]))
+df <- Brain_Region_Labels
+lst <- as.numeric(df[['last_char']])
+combine_pairs <- c()
+temp <- c()
+cnt = 1
+
+for (i in 1:1:length(lst)) {
+  if (i == length(lst)) {
+    next
+  }
+  if (lst[i] == 1 & lst[i+1] == 1) {
+    combine_pairs <- append(combine_pairs,list(cnt))
+  }
+  if (lst[i] == 1 & lst[i+1] != 1) {
+    temp <- append(temp,cnt)
+  }
+  if (lst[i] != 1 & lst[i+1] != 1) {
+    temp <- append(temp,cnt)
+  }
+  if (lst[i] != 1 & lst[i+1] == 1){
+    temp <- append(temp,cnt)
+    combine_pairs <- append(combine_pairs,list(temp))
+    temp <- c()
+  }
+  cnt = cnt + 1
+}
+
+df <- brprop[,1:6]
+# Assuming your dataframe is named 'df'
+df_wide <- df %>%
+  pivot_longer(
+    cols = c(Async, Chimera, Sync),      # Columns to pivot into longer format
+    names_to = "metric",                 # New column for metric names
+    values_to = "value"                  # New column for metric values
+  ) %>%
+  pivot_wider(
+    names_from = c(metric, age_group),   # Combine metric and age_group for new columns
+    values_from = value,                 # Values from the 'value' column
+    names_sep = "_"                      # Separate names with an underscore
+  )
+
+combine_pairs[82] <- list(c(127,128))
+for (Age_Group in c("Young","Middle","Old")) {
+  for (cls in Classes) {
+    temp <- df_wide[[paste(cls,"_",Age_Group,sep='')]]
+    store <- c()
+    for (i in 1:1:length(combine_pairs)) {
+        pair <- combine_pairs[[i]]
+      if (length(pair) == 1){
+        store <- append(store,as.numeric(temp[pair]))
+      } else {
+        store <- append(store,as.numeric(mean(temp[pair])))
+      }
+    }
+    if (Age_Group == 'Young' & cls == 'Async') {
+      df_store <- data.frame('Async_Young'=store)
+    } else {
+      df_store[paste(cls,"_",Age_Group,sep='')] = store
+    }
+  }
+}
+
+temp <- substr(Brain_Region_Labels[['Brain Region Labels']], 3, nchar(Brain_Region_Labels[['Brain Region Labels']])-2)
+unique_BR <- unique(temp)
+unique_BR2 <- unique_BR[1:7]
+unique_BR2 <- append(unique_BR2,unique_BR[1:7])
+unique_BR2 <- append(unique_BR2,unique_BR[8:41])
+unique_BR2 <- append(unique_BR2,unique_BR[8:41])
+
+temp <- unique_BR2[15:82]
+temp <- tolower(gsub(" ", "", temp))
+tempC <- data.frame(region = temp)
+tempC <- tempC %>% mutate(region = ifelse(row_number() <= 34, paste0("lh_",region), paste0("rh_",region)))
+temp <- gsub(" ","-",unique_BR2[1:14])
+tempSC <- data.frame(region = temp[1:14])
+tempSC <- tempSC %>% mutate(region = ifelse(row_number() <= 7, paste0("Left-",region), paste0("Right-",region)))
+temp <- bind_rows(tempSC,tempC)
+
+df_store['label'] = temp
+
+atlasDK2 <- data.frame('label' = temp[15:82,'region'])
+atlasASEG2 <- data.frame('label' = temp[1:14,'region'])
+for (Age_Group in c("Young","Middle","Old")) {
+  for (cls in Class) {
+    atlasDK2[paste(cls,'_',Age_Group,sep='')] <- df_store[15:82,paste(cls,'_',Age_Group,sep='')]
+    atlasASEG2[paste(cls,'_',Age_Group,sep='')] <- df_store[1:14,paste(cls,'_',Age_Group,sep='')]
+  }
+}
+
+
+# ============ Cortical Structures =======================
+
+for (i in 1:3){
+  
+atlasDK2[Classes[i]] <- (atlasDK2[paste(Classes[i],"_Young",sep='')] + atlasDK2[paste(Classes[i],"_Middle",sep='')] + atlasDK2[paste(Classes[i],"_Old",sep='')])/3
+
+atlasASEG2[Classes[i]] <- (atlasASEG2[paste(Classes[i],"_Young",sep='')] + atlasASEG2[paste(Classes[i],"_Middle",sep='')] + atlasASEG2[paste(Classes[i],"_Old",sep='')])/3
+
+}
+        
+i <- 1
+for (cls in Class) {
+  if (cls == "Chimera") {
+    p <- ggseg(.data=atlasDK2, mapping=aes_string(fill=cls),color='black',position='stacked') +
+      scale_fill_gradientn(colors = colormap) +
+      theme_void()
+    ggsave(paste("Aging-Chimeras/Figures/Brain-Regions/",cls,".svg",sep=''), plot = p, width = 6.4, height = 4.4, units = "in")
+    
+    p <- ggseg(atlas=aseg,.data=atlasASEG2,mapping=aes_string(fill=cls),color='black',position='stacked') +
+      scale_fill_gradientn(colors = colormap) +
+      theme_void()
+    ggsave(paste("Aging-Chimeras/Figures/Brain-Regions/SC-",cls,".svg",sep=''), plot = p, width = 6.4, height = 4.4, units = "in")
+  } else{
+    p <- ggseg(.data=atlasDK2, mapping=aes_string(fill=cls),color='black',position='stacked') +
+      scale_fill_gradient2(low="white",high=my_colors[i],limits=c(0,1)) +
+      #scale_fill_manual(values=my_colors[i]) +
+      theme_void()
+    ggsave(paste("Aging-Chimeras/Figures/Brain-Regions/",cls,".svg",sep=''), plot = p, width = 6.4, height = 4.4, units = "in")
+  
+    
+    p <- ggseg(atlas=aseg,.data=atlasASEG2,mapping=aes_string(fill=cls),color='black',position='stacked')+
+      scale_fill_gradient2(low="white",high=my_colors[i],limits=c(0,1)) +
+      #scale_fill_manual(values=my_colors[i]) +
+      theme_void()
+    ggsave(paste("Aging-Chimeras/Figures/Brain-Regions/SC-",cls,".svg",sep=''), plot = p, width = 6.4, height = 4.4, units = "in")
+  }
+  i = i + 1
+}
+
+lowcolor="#00FF51"
+highcolor="#CC00FF"
+
+# ============ Cortical Structures =======================
+for (di in differences) {
+  for (cls in Class) {
+    p <- ggseg(.data=atlasDK, mapping=aes_string(fill=paste(di,'_',cls,sep='')),color='black',position='stacked') +
+      #scale_fill_gradient2(low="#00BAFF",mid="white",high="#D10300",limits=c(-0.3,0.3)) +
+      scale_fill_gradient2(low=lowcolor,mid="white",high=highcolor,limits=c(-0.3,0.3)) +
+      theme_void()
+    ggsave(paste("Aging-Chimeras/Figures/Brain-Regions/",di,"-","cls",".svg",sep=''), plot = p, width = 6.4, height = 4.4, units = "in")
+
+    
+    p <- ggseg(atlas=aseg,.data=atlasASEG,mapping=aes_string(fill=paste(di,'_',cls,sep='')),color='black',position='stacked')+
+      #scale_fill_gradient2(low="#00BAFF",mid="white",high="#D10300",limits=c(-0.3,0.3)) +
+      scale_fill_gradient2(low=lowcolor,mid="white",high=highcolor,limits=c(-0.3,0.3)) +
+      theme_void()
+    ggsave(paste("Aging-Chimeras/Figures/Brain-Regions/SC-",di,"-",cls,".svg",sep=''), plot = p, width = 6.4, height = 4.4, units = "in")
+  }
+}
+
+
+```
+
+
+```{r}
+
+# ============================ Fig. 5 & 13 ===================================
+
+# Update auditory to new left/right hemisphere auditory rows in the `Cognitive_System` column.
+AudL <- subset(all_Measures, Cognitive_System == "Aud" & Hemisphere == "L")
+AudL['Cognitive_System'] <- 'Aud-L'
+AudR <- subset(all_Measures, Cognitive_System == "Aud" & Hemisphere == "R")
+AudR['Cognitive_System'] <- 'Aud-R'
+temp <- bind_rows(all_Measures,AudL,AudR)
+
+# Combine old ages.
+data_ages <- temp %>% mutate(Age = case_when(
+  Age %in% c(67.5, 72.5) ~ "70",
+  Age %in% c(77.5, 82.5, 87.5) ~ "80",
+  TRUE ~ as.factor(Age)))
+
+# Ensure age is type double.
+data_ages %>% mutate(Age = as.double(Age))
+
+# Create a complete dataframe for statistics.
+result_complete <- data_ages %>%
+  count(Subject, Cognitive_System, Classification, Age) %>%
+  complete(
+    Subject, Cognitive_System,
+    Classification = c("Sync", "Async", "Chimera"),
+    fill = list(n = 0)
+  ) %>%
+  group_by(Subject) %>%
+  fill(Age, .direction = "downup") %>%
+  ungroup()
+
+
+# Compute proportions and summary statistics
+result_summary <- result_complete %>%
+  # Calculate total 'n' for each Subject-Cognitive_System-Age group
+  group_by(Subject, Cognitive_System, Age) %>%
+  mutate(total_n = sum(n)) %>%
+  # Compute proportion for each Classification
+  mutate(proportion = n / total_n) %>%
+  ungroup() %>%
+  # Group by the factors of interest
+  group_by(Cognitive_System, Age, Classification) %>%
+  # Calculate mean and CI for proportions
+  summarize(
+    ci = list(mean_ci(proportion)),
+    .groups = 'drop'
+  ) %>%
+  # Split the CI values into separate columns
+  unnest_wider(ci)
+
+# Ensure the ages are type double.
+result_summary <- result_summary %>% mutate(Age = as.double(Age))
+
+# Loop through each cognitive system and plot.
+for (CS in c("Att","Aud","Aud-L","Aud-R","CO","FP","DM","MS","SC","VT","V")) {
+
+  temp <- subset(result_summary, Cognitive_System == CS)
+  
+  p <- ggplot(temp,aes(x=Age,y=mean,fill=Classification)) +
+    geom_point(data = subset(temp,Classification=="Async"),aes(x=Age,y=mean),shape=21,color='black',stroke=0.3) +
+    geom_point(data = subset(temp,Classification=="Chimera"),aes(x=Age,y=mean),shape=22,color='black',stroke=0.3) +
+    geom_point(data = subset(temp,Classification=="Sync"),aes(x=Age,y=mean),shape=24,color='black',stroke=0.3) +
+    geom_ribbon(
+      data = subset(temp,Classification == "Async"),
+      aes(ymin=lower,ymax=upper),
+      fill = my_colorsD[1],
+      alpha=0.2
+    ) +
+    geom_ribbon(
+      data = subset(temp,Classification == "Sync"),
+      aes(ymin=lower,ymax=upper),
+      fill = my_colorsD[3],
+      alpha=0.2
+    ) +
+    geom_ribbon(
+      data = subset(temp,Classification == "Chimera"),
+      aes(ymin=lower,ymax=upper),
+      fill = my_colorsD[2],
+      alpha=0.2
+    ) +
+    geom_line(
+        data = subset(temp, Classification == "Async"),
+        aes(x = Age, y=lower)
+      ) +
+      geom_line(
+        data = subset(temp, Classification == "Async"),
+        aes(x = Age, y=upper)
+      ) +
+      geom_line(
+        data = subset(temp, Classification == "Chimera"),
+        aes(x = Age, y=lower)
+      ) +
+      geom_line(
+        data = subset(temp, Classification == "Chimera"),
+        aes(x = Age, y=upper)
+      ) +
+      geom_line(
+        data = subset(temp, Classification == "Sync"),
+        aes(x = Age, y=lower)
+      ) +
+      geom_line(
+        data = subset(temp, Classification == "Sync"),
+        aes(x = Age, y=upper)
+      ) +
+    scale_fill_manual(values = my_colorsD) +
+    theme_minimal() +
+      # Move y-axis to the right and hide the left axis
+      scale_y_continuous(position = "right") + 
+      labs(y = "",
+           x = "") +
+      theme(
+          axis.text.x = element_text(size = 8),
+          axis.title.x = element_text(size = 8),
+          axis.title.y = element_text(size = 8, margin = margin(r = 10)), 
+          axis.text.y = element_text(size = 8),
+          # Hide left y-axis elements
+          axis.text.y.left = element_blank(),
+          axis.ticks.y.left = element_blank(),
+          axis.title.y.left = element_blank(),
+          legend.position = 'none'
+      ) +
+      xlim(5,82.5)
+  ggsave(paste("Aging-Chimeras/Figures/Proportion-Aging/",CS,".svg",sep=''), plot = p, width = 3.3, height = 1.15, units = "in")
+}
+
+
+```
+
+
+```{r}
+
+# ======================= Functions for Fig. 6 & 7 ===========================
+
+
+# Single function to bin the measure and calculate mean for each bin
+bin_measure <- function(df, measure, bin_width, Age=TRUE) {
+  if (Age) {
+    df <- df %>%
+    mutate(y_binned = cut(
+    !!sym(measure),
+    breaks = seq(min(!!sym(measure), na.rm = TRUE), max(!!sym(measure), na.rm = TRUE), by = bin_width),
+    include.lowest = TRUE, labels = FALSE
+    )) %>%
+    group_by(y_binned,Age) %>%
+    mutate(mean_y_bin = mean(!!sym(measure), na.rm = TRUE))
+  } else {
+    df <- df %>%
+    mutate(y_binned = cut(
+    !!sym(measure),
+    breaks = seq(min(!!sym(measure), na.rm = TRUE), max(!!sym(measure), na.rm = TRUE), by = bin_width),
+    include.lowest = TRUE, labels = FALSE
+    )) %>%
+    group_by(y_binned) %>%
+    mutate(mean_y_bin = mean(!!sym(measure), na.rm = TRUE))
+  }
+  
+  df
+}
+
+Age_Proportions <- function(df) {
+  class_counts <- aggregate(Classification ~ Age, df, table)
+  clas <- class_counts$Classification
+  N <- apply(clas,1,sum) # Get the number of each classification.
+  clas <- clas/N # Normalize to get proportion.
+  df <- data.frame(Age=class_counts$Age,Async=clas[,1],Chimera=clas[,2],Sync=clas[,3]) # Create a data frame.
+  df_Classification <- bind_cols(rbind(df[1],df[1],df[1]),stack(df[2:4]))
+  colnames(df_Classification) <- c("Age","Proportion","Classification")
+  df_Classification
+}
+
+# Function to calculate proportions after binning
+process_binning_and_proportion <- function(df, measure, bin_ranges, Age=TRUE) {
+  
+  all_binning <- list()
+
+  # Loop over bin_ranges, subset, and bin the data
+  for (range in bin_ranges) {
+    subset_df <- df %>%
+    filter(!!sym(measure) > range[1], !!sym(measure) <= range[2])
+    binned_data <- bin_measure(subset_df, measure, range[3],Age=Age)
+    all_binning[[length(all_binning) + 1]] <- binned_data
+  }
+  
+  # Combine all binned data
+  all_binning <- bind_rows(all_binning)
+  
+  # Calculate proportions of classifications
+  if (Age) {
+    class_counts <- aggregate(Classification ~ mean_y_bin + Age, all_binning, table)
+  } else {
+    class_counts <- aggregate(Classification ~ mean_y_bin, all_binning, table)
+  }
+  clas <- class_counts$Classification
+  N <- rowSums(clas)
+  clas <- sweep(clas, 1, N, `/`)  # Normalize to get proportion
+  
+  if (Age) {
+    df_proportion <- data.frame(
+    Age = class_counts$Age,
+    Str = class_counts$mean_y_bin,
+    Async = clas[,1],
+    Chimera = clas[,2],
+    Sync = clas[,3])
+  } else {
+    df_proportion <- data.frame(
+    Str = class_counts$mean_y_bin,
+    Async = clas[,1],
+    Chimera = clas[,2],
+    Sync = clas[,3])
+  }
+  
+  # Reshape for output
+  if (Age) {
+    df_Classification <- bind_cols(
+    rbind(df_proportion[1:2], df_proportion[1:2], df_proportion[1:2]),
+    stack(df_proportion[3:5]))
+    colnames(df_Classification) <- c("Age", measure, "Proportion", "Classification")
+  } else {
+    df_Classification <- bind_cols(
+    rbind(df_proportion[1], df_proportion[1], df_proportion[1]),
+    stack(df_proportion[2:4]))
+    colnames(df_Classification) <- c(measure, "Proportion", "Classification")
+  }
+  
+  # Return both df_Classification and all_binning as a list
+  list(df_Classification = df_Classification, all_binning = all_binning)
+}
+
+# Function to calculate custom PDF based on mean_y_bin
+calculate_pdf <- function(binned_df, measure = "mean_y_bin", name, Age = TRUE) {
+  # Calculate bin counts per Age group and bin
+  if (Age) {
+    pdf_df <- binned_df %>%
+    group_by(Age, !!sym(measure)) %>%
+    summarise(bin_count = n(), .groups = "drop") %>%
+    
+    # Calculate total count per Age group
+    group_by(Age) %>%
+    mutate(total_count = sum(bin_count)) %>%
+    
+    # Calculate PDF by dividing each bin_count by the total count per Age
+    mutate(PDF = bin_count / total_count) %>%
+    ungroup() %>%
+    
+    # Select only the relevant columns
+    select(Age, !!sym(measure), PDF)
+  } else {
+    pdf_df <- binned_df %>%
+    group_by(!!sym(measure)) %>%
+    summarise(bin_count = n()) %>%
+    ungroup() %>%
+    mutate(pdf = bin_count / sum(bin_count))  # Normalize to get PDF
+  }
+  
+  # Rename columns for clarity
+  colnames(pdf_df)[colnames(pdf_df) == measure] <- name
+  colnames(pdf_df)[colnames(pdf_df) == "pdf"] <- "PDF"
+  pdf_df
+}
+
+get_Proportions <- function(df,measure,bin_width) {
+  df <- bin_measure(df,measure,bin_width)
+  class_counts <- aggregate(Classification ~ mean_y_bin, df, table)
+  clas <- class_counts$Classification
+  N <- apply(clas,1,sum) # Get the number of each classification.
+  clas <- clas/N # Normalize to get proportion.
+  df <- data.frame(Str=class_counts$mean_y_bin ,Async=clas[,1],Chimera=clas[,2],Sync=clas[,3]) # Create a data frame.
+  df_Classification <- bind_cols(rbind(df[1],df[1],df[1]),stack(df[2:4]))
+  colnames(df_Classification) <- c(measure,"Proportion","Classification")
+  df_Classification
+}
+
+get_Regions <- function(data,barrier,measure,delta){
+  Regions = c()
+  for (cls in c("Async","Sync")) {
+    Regions <- append(Regions,crossings(data,barrier,cls,measure,delta))
+  }
+  Regions
+}
+
+# Define function to process each age group
+process_age_group <- function(data) {
+  # Assign Regions and Conditions
+  data_processed <- data %>%
+    mutate(
+      Region = case_when(
+        
+        # Condition (1; AC)
+        Strength_AC > !!sym(paste("Async_",measure,sep='')) & 
+          Strength_AC < Async_next_measure & 
+          Async_Proportion >= 0.4 ~ Strength_AC,
+        # Condition (2)
+        (Sync_Proportion == 0.5 & Chimera_Proportion == 0.5) ~ Strength_SC,
+        # Condition (1; SC)
+        Strength_SC > !!sym(paste("Sync_",measure,sep='')) & 
+          Strength_SC < Sync_next_measure & 
+          (Sync_Proportion >= 0.4 | Chimera_Proportion >= 0.4) ~ Strength_SC,
+        is.na(Sync_Proportion)  ~ !!sym(paste("Sync_",measure,sep='')),
+        TRUE ~ NA_real_
+      ),
+      Condition = case_when(
+        !is.na(Region) & 
+          (Strength_AC > !!sym(paste("Async_",measure,sep='')) &
+             Strength_AC < Async_next_measure &
+             Async_Proportion >= 0.4) ~ "AC",
+        !is.na(Region) & 
+          (Strength_SC > !!sym(paste("Sync_",measure,sep='')) &
+             Strength_SC < Sync_next_measure &
+             (Sync_Proportion >= 0.4 | Chimera_Proportion >= 0.4)) ~ "SC",
+        !is.na(Region) & 
+          (Sync_Proportion == Chimera_Proportion) ~ "C2",
+        !is.na(Region) &
+          is.na(Sync_Proportion) ~ "C2",
+        TRUE ~ NA_character_
+      )
+    ) %>%
+    filter(!is.na(Region)) %>%
+    arrange(Region)
+  
+  if (nrow(data_processed) == 0) return(tibble())
+  
+  # Initialize new_colors (length = regions + 1)
+  new_colors <- character(nrow(data_processed) + 1)
+  
+  # First color
+  first_cond <- data_processed$Condition[1]
+  new_colors[1] <- case_when(
+    first_cond == "AC" ~ my_colorsD[2],
+    first_cond == "SC" ~ my_colorsD[3],
+    first_cond == "C2" ~ "orange",
+    TRUE ~ NA_character_
+  )
+  
+  # Color transitions
+  for (i in 1:nrow(data_processed)) {  # Fix: Removed extra ')'
+    cond <- data_processed$Condition[i]
+    prev_color <- if (i == 1) new_colors[1] else new_colors[i]
+    
+    new_colors[i + 1] <- case_when(
+      cond == "AC" & (prev_color == my_colorsD[2] | is.na(prev_color)) ~ my_colorsD[1],
+      cond == "AC" & (prev_color == my_colorsD[1]) ~ my_colorsD[2],
+      cond == "SC" & (prev_color == my_colorsD[3] | is.na(prev_color)) ~ my_colorsD[2],
+      cond == "SC" & (prev_color == my_colorsD[2]) ~ my_colorsD[3],
+      cond == "C2" & (prev_color == "orange") ~ my_colorsD[3],
+      TRUE ~ NA_character_
+    )
+  }
+  
+  # Add to results
+  data_processed %>%
+    mutate(
+      new_colors = list(new_colors),
+      Regions = list(c(-Inf, Region, Inf))
+    )
+}
+
+plot_NSMCLP_AGED <- function(data,measure,bin_ranges,CS,Hemisphere,limit,delta) {
+  
+  # Bin the network science measure and obtain class proportions as a function of the NSM.
+  result <- process_binning_and_proportion(data, measure, bin_ranges, Age = TRUE)
+  
+  # Access df_Classification and all_binning
+  df_Classification <- result$df_Classification
+  
+  df_slopes <- df_Classification %>%
+    group_by(Classification) %>%
+    arrange(Age) %>%
+    mutate(
+      next_measure = lead(!!sym(measure)),
+      next_Proportion = lead(Proportion),
+      slope = (next_Proportion - Proportion) / (next_measure - !!sym(measure))
+    ) %>%
+    ungroup() %>%
+    filter(!is.na(slope))
+
+  df_wide <- df_slopes %>%
+    pivot_wider(
+      id_cols = Age,
+      names_from = Classification,
+      values_from = c(!!sym(measure), Proportion, slope, next_measure),
+      names_glue = "{Classification}_{.value}",
+      values_fn = list  # Allow lists (temporary)
+    ) %>%
+    unchop(everything())  # Flatten list-columns
+  
+  
+  df_zij <- df_wide %>%
+    mutate(
+      Strength_AC = ( (Chimera_Proportion - Async_Proportion) + (Async_slope * !!sym(paste("Async_",measure,sep='')) - Chimera_slope * !!sym(paste("Chimera_",measure,sep=''))) ) / (Async_slope - Chimera_slope),
+      Strength_SC = ( (Chimera_Proportion - Sync_Proportion) + (Sync_slope * !!sym(paste("Sync_",measure,sep='')) - Chimera_slope * !!sym(paste("Chimera_",measure,sep='')) )) / (Sync_slope - Chimera_slope)
+    )
+  
+  # Example usage
+  results <- df_zij %>%
+    group_by(Age) %>%
+    group_modify(~ process_age_group(.x)) %>%
+    ungroup()
+  
+  for (age in c(15,45,70)){
+    tst <- subset(results, Age == age)
+    x <- tst[['Condition']]
+    for (i in 1:length(x)) {
+      if (i == 1){
+        if (x[i] == "AC"){
+          new_colors <- c(my_colorsD[1],my_colorsD[2])
+        }
+      } else {
+        if (x[i] == "SC"){
+          if (new_colors[length(new_colors)] == my_colorsD[2] | new_colors[length(new_colors)] == "orange") {
+            if (new_colors[length(new_colors)-1] == my_colorsD[3] & new_colors[length(new_colors)] == "orange") {
+              new_colors[length(new_colors)] = my_colorsD[3]
+            } 
+            new_colors <- c(new_colors,my_colorsD[3])
+          } else if (new_colors[length(new_colors)] == my_colorsD[3] | new_colors[length(new_colors)] == "orange") {
+            new_colors <- c(new_colors,my_colorsD[2])
+          }
+        } else if (i == length(x) & x[i] == "C2") {
+          new_colors[length(new_colors)] = my_colorsD[3]
+        }else {
+          if (new_colors[length(new_colors)] == "orange"){
+            new_colors[length(new_colors)] = my_colorsD[3]
+            new_colors <- c(new_colors,my_colorsD[3])
+          } else {
+            new_colors <- c(new_colors,'orange')
+          }
+        }
+      }
+    }
+    
+    # Prepare regions and colors
+    if (age == 45){
+      if (CS == "Aud-R") {
+      new_colors <- c(new_colors,my_colorsD[3])
+      } else if (CS == "VT") {
+        
+      }
+    }
+    new_region <- c(-Inf, tst[['Region']], Inf)
+    
+    annotations <- lapply(2:length(new_region), function(i) {
+      annotate(
+        "rect",
+        xmin = new_region[i - 1],
+        xmax = new_region[i],
+        ymin = -Inf,
+        ymax = Inf,
+        fill = new_colors[i - 1],  # Use i-1 for color index
+        alpha = 0.4
+      )
+    })
+    p2 <- ggplot()
+      
+      p2 <- p2 + 
+        annotations +
+        ggdist::stat_halfeye(
+        data = subset(data,Age==age), aes_string(x = measure, group = "Age"),
+        adjust = .5,
+        width = 1,
+        .width = 0,
+        justification = 0,
+        point_colour = NA,
+        fill = 'white'
+        #fill = "#36454F"
+      ) +
+      ggdist::stat_halfeye(
+        data = subset(data,Age==age), aes_string(x = measure, group = "Age"),
+        adjust = .5,
+        width = .6,
+        .width = 0,
+        justification = 0,
+        point_colour = NA,
+        fill = gradient_colors[1]
+        #fill = "#36454F"
+      ) +
+      
+      # Plot the network science measure vs. class proportion for each classification (Async,Chimera,Sync).
+      geom_point(data=subset(df_Classification,Age==age & Classification=="Async"),aes_string(x=measure,y="Proportion",fill="Classification"),color='black',size=2.5,shape=21,stroke=0.3,show.legend=FALSE) +
+      geom_point(data=subset(df_Classification,Age==age & Classification=="Chimera"),aes_string(x=measure,y="Proportion",fill="Classification"),color='black',size=2.5,shape=22,stroke=0.3,show.legend=FALSE) +
+      geom_point(data=subset(df_Classification,Age==age & Classification=="Sync"),aes_string(x=measure,y="Proportion",fill="Classification"),color='black',size=2.5,shape=24,stroke=0.3,show.legend=FALSE) +
+      
+      geom_boxplot(
+        data = subset(data,Age==age), aes_string(x = measure, group = "Age"),
+        width = 0.1,
+        size = 0.5,
+        outlier.shape = NA,
+        position = position_nudge(y = -0.1),  # Nudge the boxplot down
+        color = 'black'
+      ) +
+      
+      scale_fill_manual(values=my_colorsL) +
+      #theme_minimal() +
+      labs(
+        x = measure,
+        y = "Class Proportion"
+      ) +
+      theme(
+        axis.text.x = element_text(size = 9),
+        axis.title.x = element_text(size = 9),
+        axis.title.y = element_text(size = 9),
+        axis.text.y = element_text(size = 9)) +
+      xlim(0,limitA)
+    ggsave(paste("Aging-Chimeras/Figures/Strength-Distribution/",CS," ",measure," ",age,".svg",sep=''), plot = p2, width = 1.9, height = 2.2, units = "in")
+    
+    if (age == 15) {
+      Regions <- data.frame(Region = new_region)
+      Colors <- data.frame(Color = new_colors)
+      Regions['AgeR'] <- rep(age,length(new_region))
+      Colors['AgeC'] <- rep(age,length(new_colors))
+    } else {
+      Regions2 <- data.frame(Region = new_region)
+      Colors2 <- data.frame(Color = new_colors)
+      Regions2['AgeR'] <- rep(age,length(new_region))
+      Colors2['AgeC'] <- rep(age,length(new_colors))
+      
+      Regions <- rbind(Regions,Regions2)
+      Colors <- rbind(Colors,Colors2)
+    }
+  }
+  return(c(Regions,Colors))
+}
+
+plot_RAINCLOUDCLP_AGED <- function(data,measure,results,CS,limit) {
+
+  Regions <- results$Region
+  Colors <- results$Color
+  AgeC <- results$AgeC
+  AgeR <- results$AgeR
+  
+  Regions <- data.frame(Region = Regions, Age = AgeR)
+  Colors <- data.frame(Color = Colors, Age = AgeC)
+  
+  AudL <- subset(data, Cognitive_System == "Aud" & Hemisphere == "L")
+  AudL['Cognitive_System'] <- 'Aud-L'
+  AudR <- subset(data, Cognitive_System == "Aud" & Hemisphere == "R")
+  AudR['Cognitive_System'] <- 'Aud-R'
+  data <- bind_rows(data,AudL,AudR)
+  data <- subset(data, Cognitive_System %in% c("Att","Aud-L","Aud-R","CO","FP","DM","MS","SC","VT","V"))
+  
+  result_complete <- data %>%
+  count(Subject, Cognitive_System, Classification, Age) %>%
+  complete(
+    Subject, Cognitive_System,
+    Classification = c("Sync", "Async", "Chimera"),
+    fill = list(n = 0)
+  ) %>%
+  group_by(Subject) %>%
+  fill(Age, .direction = "downup") %>%
+  ungroup()
+  
+  # Compute proportions and summary statistics
+  result_summary <- result_complete %>%
+  # Calculate total 'n' for each Subject-Cognitive_System-Age group
+  group_by(Subject, Cognitive_System, Age) %>%
+  mutate(total_n = sum(n)) %>%
+  # Compute proportion for each Classification
+  mutate(proportion = n / total_n) %>%
+  ungroup() %>%
+  # Group by the factors of interest
+  group_by(Cognitive_System, Age, Classification) %>%
+  # Calculate mean and CI for proportions
+  summarize(
+    ci = list(mean_ci(proportion)),
+    .groups = 'drop'
+  ) %>%
+  # Split the CI values into separate columns
+  unnest_wider(ci)
+  
+  result_summary <- subset(result_summary,Cognitive_System == CS)
+  result_summary <- result_summary %>% mutate(Age = as.double(Age))
+  
+    bounds <- c(0,5,11,15)
+    new_region <- subset(Regions, Age == 15)[['Region']]
+    new_colors <- subset(Colors, Age == 15)[['Color']]
+    annotationsY <- lapply(2:length(new_region), function(i) {
+      annotate(
+        "rect",
+        xmin = bounds[1],
+        xmax = bounds[2],
+        ymin = new_region[i-1],
+        ymax = new_region[i],
+        fill = new_colors[i - 1],  # Use i-1 for color index
+        alpha = 0.4
+      )
+    })
+    
+    new_region <- subset(Regions, Age == 45)[['Region']]
+    new_colors <- subset(Colors, Age == 45)[['Color']]
+    annotationsM <- lapply(2:length(new_region), function(i) {
+      annotate(
+        "rect",
+        xmin = bounds[2],
+        xmax = bounds[3],
+        ymin = new_region[i-1],
+        ymax = new_region[i],
+        fill = new_colors[i - 1],  # Use i-1 for color index
+        alpha = 0.4
+      )
+    })
+    new_region <- subset(Regions, Age == 70)[['Region']]
+    new_colors <- subset(Colors, Age == 70)[['Color']]
+    annotationsO <- lapply(2:length(new_region), function(i) {
+      annotate(
+        "rect",
+        xmin = bounds[3],
+        xmax = bounds[4],
+        ymin = new_region[i-1],
+        ymax = new_region[i],
+        fill = new_colors[i - 1],  # Use i-1 for color index
+        alpha = 0.4
+      )
+    })
+  
+    p <- ggplot() + annotationsY + annotationsM + annotationsO + 
+      ggdist::stat_halfeye(data=data,aes_string(x="Age",y=measure),
+      adjust = .5,
+      width = .65,
+      .width = 0,
+      justification = -.2,
+      point_colour = NA,
+      fill='white'
+    ) +
+    ggdist::stat_halfeye(data=data,aes_string(x="Age",y=measure),
+      adjust = .5,
+      width = .6,
+      .width = 0,
+      justification = -.2,
+      point_colour = NA,
+      fill= '#36454F'
+    ) +
+    geom_boxplot(data=data,aes_string(x="Age",y=measure),
+      width = .20,
+      size=0.5,
+      outlier.shape = NA
+    ) +
+      
+    geom_ribbon(
+      data = subset(result_summary, Classification == "Async"),
+      aes(x = Age, ymin = lower*limit, ymax = upper*limit),
+      fill = 'black',  # Use the same color as the points
+      alpha = 0.2  # Adjust transparency
+    ) +
+    geom_ribbon(
+      data = subset(result_summary, Classification == "Chimera"),
+      aes(x = Age, ymin = lower*limit, ymax = upper*limit),
+      fill = 'black',
+      alpha = 0.2
+    ) +
+    geom_ribbon(
+      data = subset(result_summary, Classification == "Sync"),
+      aes(x = Age, ymin = lower*limit, ymax = upper*limit),
+      fill = 'black',
+      alpha = 0.2
+    ) +
+    
+    geom_line(
+      data = subset(result_summary, Classification == "Async"),
+      aes(x = Age, y=lower*limit)
+    ) +
+    geom_line(
+      data = subset(result_summary, Classification == "Async"),
+      aes(x = Age, y=upper*limit)
+    ) +
+    geom_line(
+      data = subset(result_summary, Classification == "Chimera"),
+      aes(x = Age, y=lower*limit)
+    ) +
+    geom_line(
+      data = subset(result_summary, Classification == "Chimera"),
+      aes(x = Age, y=upper*limit)
+    ) +
+    geom_line(
+      data = subset(result_summary, Classification == "Sync"),
+      aes(x = Age, y=lower*limit)
+    ) +
+    geom_line(
+      data = subset(result_summary, Classification == "Sync"),
+      aes(x = Age, y=upper*limit)
+    ) +
+    
+    geom_point(
+      data=subset(result_summary,Classification=="Async"),
+      aes(x=Age,y=mean*limit),
+      fill=my_colorsD[1],color='black',size=2,shape=21,stroke=0.3,alpha=1,show.legend=TRUE) +
+    geom_point(
+      data=subset(result_summary,Classification=="Chimera"),
+      aes(x=Age,y=mean*limit),
+      fill=my_colorsD[2],color='black',size=2,shape=22,stroke=0.3,alpha=1,show.legend=TRUE) +
+    geom_point(
+      data=subset(result_summary,Classification=="Sync"),
+      aes(x=Age,y=mean*limit),
+      fill=my_colorsD[3],color='black',size=2,shape=24,stroke=0.3,alpha=1,show.legend=TRUE) +
+    scale_y_continuous(
+      name = measure,  # Primary y-axis label
+      sec.axis = sec_axis(~./limit, name = "Class Proportion"),
+      limits = c(-1,limit) # Secondary y-axis, scaled back
+    ) +
+      
+    coord_flip() +
+    labs(
+      x = "Cross-Sectional Age (Years)",
+      y = measure,
+    ) +
+    geom_boxplot(width = 0.3,
+    size=0.5,
+    fill = "white") +
+    scale_color_manual(values=my_colorsD) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(size = 9),
+      axis.title.x = element_text(size = 9),
+      axis.title.y = element_text(size = 9),
+      axis.text.y = element_text(size = 9),
+      legend.position = 'none')
+  ggsave(paste("Aging-Chimeras/Figures/Raincloud/",CS,text_,measure,".svg",sep=''), plot = p, width = 1.55, height = 3.15, units = "in")
+}
+
+```
+
+```{r}
+
+# =========================== Fig. 6 & 7 ==================================
+
+# Custom colours.
+
+CS_colors <- c('#355C7D','#6C5B7B','#C06C84','#F67280','#F8B195')
+
+i <- 1
+
+for (CS in c("Aud-L","Aud-R","VT","DM","Att")) {
+  
+  # Temporarily store the dataframe containing all the data.
+  temp <- all_Measures
+  if (CS == "Aud-L") {
+    temp <- subset(temp,Cognitive_System=="Aud" & Hemisphere == "L")
+    Side <- "L"
+  } else if (CS == "Aud-R") {
+    temp <- subset(temp,Cognitive_System=="Aud" & Hemisphere == "R")
+    Side <- "R"
+  } else {
+    temp <- subset(temp,Cognitive_System==CS)
+  }
+  
+  # Create the age group corresponding to: Young, middle-aged, and old-age.
+  data <- temp %>% mutate(Age = case_when(Age < 30 ~ 15,
+    Age >= 60 ~ 70,
+    Age >= 30 & Age < 60 ~ 45))
+  
+  
+  # Factor the 14 age groups.
+  data_ages <- temp %>% mutate(Age = case_when(
+    Age %in% c(67.5, 72.5) ~ "70",
+    Age %in% c(77.5, 82.5, 87.5) ~ "80",
+    TRUE ~ as.factor(Age)))
+  
+  data_ages <- data_ages %>% mutate(Age = as.double(Age))
+  data_ages <- data_ages %>% mutate(Age = factor(Age))
+  measure <- "Strength"
+  my_colorsD <- c("#54A6D2","#F4E40B","#AB2412")
+  my_colorsL <- c("#62b6e3","#f7ec52","#b55a4e")
+    
+    
+    
+  bin_ranges <- list(
+  c(-Inf, 2.5, 0.5),
+  c(2.5, 5, 1),
+  c(5, 10, 0.7),
+  c(10, Inf, 1.2))
+  delta <- 0.7
+  limitA <- 15
+  limitB <- 15
+  if (CS == "SC") {
+    limitB <- 40
+  }
+   
+  # Return the Regions.
+  gradient_colors <- colorRampPalette(c(CS_colors[i], "white"), space = "Lab")(4)
+  gradient_colors <- gradient_colors[-4]  # Remove the last color (pure white)
+  results <- plot_NSMCLP_AGED(data,measure,bin_ranges,CS,Side,limitA,delta)
+
+
+  #Regions
+  plot_RAINCLOUDCLP_AGED(data_ages,measure,results,CS,limitB)
+
+  i <- i + 1
+}
+
+
+```
+
+
+```{r}
+
+# =================== Functions for Fig. 8 & 15 =========================== 
+
+get_Patterns <- function(data) {
+  # =======================================================================
+  #
+  # This function takes a dataframe, calculates the proportion of each 
+  #  synchronous pattern, and returns the original dataframe.
+  #
+  # =======================================================================
+  df <- subset(data.frame(table(data[c('Decimal')])), Freq > 0)
+  df['Proportion'] <- df['Freq'] / sum(df['Freq']) * 100
+  
+  df
+}
+
+get_Binary <- function(binary_number) {
+  # =======================================================================
+  #
+  # This function takes a synchronous pattern and represents it as a 
+  #  a number according to its binary.
+  #
+  # =======================================================================
+  decimal_number <- paste0(rev(as.integer(intToBits(binary_number)[1:9])), collapse = "")
+  decimal_number
+}
+
+init_Patterns <- function(Chimera,Hemisphere) {
+  # =========================================================================
+  #
+  # This function initializes a dataframe for the frequency of patterns.
+  #
+  # =========================================================================
+  
+  # Load the cognitive systems synchrony patterns
+  data_file = 'Aging-Chimeras/Data/Patterns.txt'
+  patterns <- vroom(data_file, delim = ' ', col_types = 'd')
+  
+  # Compute Decimal column
+  patterns$Decimal <- apply(patterns[c("Att", "Aud", "CO", "FP", "DM", "MS", "SC", "VT", "V")], 1, function(row) {
+    binary_string <- paste0(row, collapse = "") # Combine row into a binary string
+    strtoi(binary_string, base = 2)            # Convert binary string to decimal
+    })
+  patterns[patterns['Decimal'] == 511 & patterns['Classification'] == 2,'Classification'] <- 3
+  patterns <- patterns %>%
+    mutate(
+      Hemisphere = case_when(
+      Brain_Region %in% c(1:7, 15:71) ~ "L",
+      Brain_Region %in% c(8:14, 72:128) ~ "R", 
+      TRUE ~ NA_character_)) # Handle cases that don't meet the above conditions
+
+  patterns$CSH <- paste(patterns$Cognitive_System,patterns$Hemisphere,sep='-')
+  
+  # Factor categorical variables
+  patterns <- patterns %>%
+    mutate(Subject = factor(Subject),
+      #Research_Group = factor(Research_Group),
+      Brain_Region = factor(Brain_Region),
+      Cognitive_System = factor(Cognitive_System),
+      Lobe = factor(Lobe),
+      Classification = factor(Classification),
+      Hemisphere = factor(Hemisphere)
+    )
+  
+  patterns <- patterns %>% mutate(Age_Group = case_when(Age < 30 ~ 15,
+  Age >= 60 ~ 70,
+  Age >= 30 & Age < 60 ~ 45))
+  
+  if (Hemisphere == TRUE) {
+  
+    Aud_patterns <- subset(patterns,Cognitive_System=="Aud")
+    Aud_patterns['Cognitive_System'] <- Aud_patterns['CSH']
+    
+    patterns <- bind_rows(patterns,Aud_patterns)
+    patterns <- subset(patterns, Cognitive_System %in% c("Att","Aud-L","Aud-R","DM","VT"))
+  }
+  
+  if (Chimera == TRUE) {
+    patterns <- subset(patterns,Classification==2)
+  }
+  patterns
+}
+
+get_Prop <- function(data) {
+  # =======================================================================
+  #
+  # This function takes a dataframe, calculates the proportion of each 
+  #  synchronous classification, and returns the original dataframe.
+  #
+  # =======================================================================
+  df <- subset(data.frame(table(data[c('Classification')])), Freq > 0)
+  df['Proportion'] <- df['Freq'] / sum(df['Freq']) * 100
+  df <- subset(df, Proportion > 0)
+  df
+}
+
+Pattern_Robustness <- function(Patterns){
+# ==========================================================
+#  Calculate the similarity between all patterns.
+#  How similar each responding cognitive system is in each pattern.
+#
+#  inputs
+#  -------
+#    Patterns: The cognitive system synchrony patterns.
+#
+#  returns
+#  --------
+#    R: The robustness of the patterns. The more similar the higher the value of R. If all patterns are the same R = 1. 0 <= R <= 1.
+# ===========================================================
+
+  S = Patterns[c("Att","Aud","CO","FP","DM","MS","SC","VT","V")]
+  number_of_ones <- colSums(S == 1)
+  number_of_zeros <- colSums(S == 0)
+  p <- dim(S)[1]
+  M <- dim(S)[2]
+  R <- 1/(M*(p-1)*p)*sum(((number_of_ones - 1)*number_of_ones) + (number_of_zeros - 1)*number_of_zeros)
+  R <- (R - 0.3)/(1-0.3)
+  return(R)
+}
+
+Pattern_Activated <- function(Patterns) {
+  # =======================================================================
+  #
+  # This function finds the number of ones in a set of patterns cognitive 
+  #   system.
+  #
+  # =======================================================================
+  S = Patterns[c("Att","Aud","CO","FP","DM","MS","SC","VT","V")]
+  number_of_ones <- rowSums(S)
+  number_of_ones
+  return(number_of_ones)
+}
+
+init_Proportions <- function(Chimera,Hemisphere) {
+  # =======================================================================
+  #
+  # This function finds the proportion of each pattern
+  #
+  # =======================================================================
+  
+  if (Chimera == TRUE){
+    chimera_text = "-CHIMERA"
+    } else {
+    chimera_text = ""
+    }
+  
+  patterns <- init_Patterns(Chimera,Hemisphere)
+  
+  patterns <- patterns %>% mutate(Age = case_when(
+  Age %in% c(67.5, 72.5) ~ "70",
+  Age %in% c(77.5, 82.5, 87.5) ~ "80",
+  TRUE ~ as.factor(Age) # Keep other ages as is
+  ))
+  
+  
+  patterns <- patterns %>% group_by(Age) %>% group_split() %>%
+    lapply(function(age_group) {
+      # Identify unique subjects
+      unique_subjects <- unique(age_group$Subject)
+      # Sample up to 100 unique subjects
+      sampled_subjects <- sample(unique_subjects, size = min(length(unique_subjects), 100))
+      # Keep all rows for the sampled subjects
+      age_group %>% filter(Subject %in% sampled_subjects)
+    }) %>%
+    bind_rows()
+  
+  # Exclude these ages, as they have << 100 samples.
+  patterns <- subset(patterns, !Age %in% c(7.5,12.5,80))
+  patterns <- patterns %>% mutate(Age = as.double(Age))
+  
+  patterns_summary <- patterns %>%
+    group_by(Age, Cognitive_System) %>%
+      summarise(Patterns = list(get_Patterns(cur_data())), .groups = "drop") %>%
+        unnest(Patterns) # Expand the list into separate rows and columns
+  
+  patterns_summary <- patterns_summary %>% mutate(Decimal = as.integer(as.character(Decimal)))
+  # Add a column with the 9-bit binary representation as a string
+  
+  patterns_summary <- patterns_summary %>%
+    mutate(Pattern = sapply(Decimal, get_Binary))
+  patterns_summary <- patterns_summary %>% mutate(Age = factor(Age))# Define custom breaks for bins
+  
+  patterns_summary <- patterns %>%
+    group_by(Age, Cognitive_System) %>%
+      summarise(Patterns = list(get_Patterns(cur_data())), .groups = "drop") %>%
+        unnest(Patterns) # Expand the list into separate rows and columns
+  
+  patterns_summary <- patterns_summary %>% mutate(Decimal = as.integer(as.character(Decimal)))
+  
+  # Add a column with the 9-bit binary representation as a string
+  patterns_summary <- patterns_summary %>%
+    mutate(Pattern = sapply(Decimal, get_Binary))
+  
+  patterns_summary
+} 
+
+Prevalent_Patterns <- function(patterns_summary,CS_colors,Cognitive_System){
+  # =======================================================================
+  #
+  # This function finds i) the prevalent patterns (proportion >5%) and plots
+  #  how this pattern differs with age and ii) plots a ranking of patterns
+  #  according to their proportions.
+  #
+  # =======================================================================
+  
+  chi = 5
+  midchi = 1
+  
+  i <- 1
+  for (CS in Cognitive_System) {
+    df <- subset(patterns_summary,Cognitive_System==CS)
+    df <- df %>%
+      group_by(Age) %>%  # Group by Age
+        arrange(desc(Proportion), .by_group = TRUE) %>%  # Sort by Proportion within each Age group
+          mutate(Ranked = seq_len(nrow(cur_data()))) %>%  # Assign unique ranks to Decimal within each group
+            ungroup()  # Ungroup for further operations
+    df <- df %>%
+      mutate(Text = case_when(
+          Proportion >= chi ~ "x",
+          Proportion >= midchi & Proportion < chi ~ "o",  
+          TRUE ~ "")) 
+    
+    # Create the plot
+    p <- ggplot(df, aes(x = Ranked, y = factor(Age), fill = Proportion)) +
+      geom_tile(color = "black") +  # Add a border to the tiles for better visibility
+      geom_text(aes(label = Text), color = "black", size = 1.5) +  # Add 'x' where Proportion > 5
+      scale_fill_continuous(
+      low = 'white',
+      high = CS_colors[i],
+      trans = scales::trans_new(
+          name = "log20",
+          transform = function(x) log(x, 20),
+          inverse = function(x) 20^x
+      ),
+      limits = c(0.5, 100),          # Set colorbar limits (min, max)
+      breaks = c(0.5,5,50),       # Breaks at limits + intermediate values
+      labels = c("0.5","5", "50"),  # Labels for the breaks
+      na.value='white') +
+      theme_minimal() +  # Minimal theme
+      theme(
+        axis.text.x = element_text(size = 8),
+        axis.title.x = element_text(size = 8,face='bold'),                       # X-axis title font size
+        axis.title.y = element_blank(),                       # Y-axis title font size
+      axis.text.y = element_blank(),
+      legend.position = "none") +
+    labs(
+      x = "Ranked",
+      #y = "Age (Years)",
+      fill = "Proportion (%)")
+    ggsave(paste("Aging-Chimeras/Figures/Variance/Ranked-Patterns/",CS,".svg",sep=''), plot = p, width = 3.2, height = 1.4, units = "in")
+    
+    p <- ggplot(df, aes(x = Ranked, y = factor(Age), fill = Proportion)) +
+      geom_tile(color = "black") +
+      geom_text(aes(label = Text), color = "black", size = 1.5) +
+      scale_fill_continuous(
+        low = 'white',
+        high = CS_colors[i],
+        trans = scales::trans_new(
+          name = "log20",
+          transform = function(x) log(x, 20),
+          inverse = function(x) 20^x
+        ),
+        limits = c(0.5, 100),          # Set colorbar limits (min, max)
+        breaks = c(0.5,5,50),       # Breaks at limits + intermediate values
+        labels = c("0.5","5", "50"),  # Labels for the breaks
+        na.value = 'white'
+      ) +
+      theme_minimal() +
+      theme(
+        axis.text.x = element_text(size = 7),
+        axis.title.x = element_text(size = 7),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        # Customize legend title
+        legend.title = element_text(
+          face='bold',
+          angle = 270,       # Rotate title 270 degrees
+          size = 8,          # Font size 8
+          hjust = 0.5,       # Horizontal alignment (centered)
+          vjust = 0.5,       # Vertical alignment (centered)
+          margin = margin(r = 5)  # Add space to the right of the title
+        ),
+        legend.position = "right",  # Ensure legend is on the right
+        # Remove all plot margins and padding
+        plot.margin = margin(0, 0, 0, 0, unit = "pt"),
+        # Control legend dimensions
+        legend.key.width = unit(0.15, "in"),  # Width of colorbar
+        legend.key.height = unit(0.2, "in"),    # Height of colorbar
+        # Remove all spacing around the legend
+        legend.spacing = unit(0, "pt"),
+        legend.box.spacing = unit(0, "pt"),
+        # Remove background and border
+        legend.background = element_blank(),
+        legend.box.background = element_blank()
+      ) +
+      labs(
+        x = "Ranked",
+        y = "Age (Years)",
+        fill = "Proportion (%)"  # Legend title text
+      ) +
+      guides(
+        fill = guide_colorbar(
+          title.position = "right"  # Place title on the right side of the colorbar
+        )
+      )
+    # Extract the legend and render it
+    leg <- get_legend(p)
+    p <- as_ggplot(leg)
+    ggsave(paste("Aging-Chimeras/Figures/Variance/Prevalent-Patterns/",CS,"_Colorbar.svg",sep=''), plot = p, width = 0.6, height = 1.1, units = "in")
+  
+  
+    df_Large <- subset(df,Text=='x')
+    Patterns_Large <- unique(df_Large$Pattern)
+    df_Large <- subset(df,Pattern %in% Patterns_Large)
+    df_Large <- df_Large %>%
+      group_by(Age) %>%  # Group by Age
+        arrange(Proportion, .by_group = TRUE) %>%  # Sort by Proportion within each Age group
+          mutate(Ranked = as.integer(factor(Proportion))) %>%  # Assign unique ranks to Decimal within each group
+            ungroup()  # Ungroup for further operations
+    
+    temp <- df_Large %>% group_by(Pattern) %>% summarise(G = mean(Proportion))
+    temp <- arrange(temp,desc(temp['G']))[1:4,'Pattern']
+    temp <- subset(df_Large, Pattern %in% temp[['Pattern']])
+    temp['Proportion'] <- round(temp['Proportion'])
+    p <- ggplot(temp, aes(x = Pattern, y = factor(Age), fill = Proportion)) +
+      geom_tile(color = "black") +  # Add a border to the tiles for better visibility
+      geom_text(aes(label = Proportion), color = "black", size = 2) +  # Add 'x' where Proportion > 5
+      #scale_fill_continuous(low = 'white', high = CS_colors[i]) +  # Fill scale
+      scale_fill_continuous(
+      low = 'white',
+      high = CS_colors[i],
+      trans = scales::trans_new(
+          name = "log20",
+          transform = function(x) log(x, 20),
+          inverse = function(x) 20^x
+      ),
+      limits = c(0.5, 100),          # Set colorbar limits (min, max)
+      breaks = c(0.5,5,50),       # Breaks at limits + intermediate values
+      labels = c("0.5","5", "50"),  # Labels for the breaks
+      na.value = 'white') +
+      #scale_x_reverse() +
+      theme_minimal() +  # Minimal theme
+      theme(
+        axis.text.x = element_text(size = 8),
+        axis.title.x = element_text(size = 8,face='bold'),                       # X-axis title font size
+        axis.text.y=element_text(size=8),                       # Y-axis title font size
+        axis.title.y = element_text(size=8,face='bold'),
+        legend.position = 'none') +
+      labs(
+        x = "Ranked",
+        y = "Age (Years)")
+    ggsave(paste("Aging-Chimeras/Figures/Variance/Prevalent-Patterns/",CS,".svg",sep=''), plot = p, width = 1.8, height = 1.4, units = "in")
+  
+    i <- i + 1
+  }
+}
+
+```
+
+```{r}
+
+# ========================= Fig. 8 & 15 ====================================
+
+# Plot each prevalent patterns according to cognitive system and respective color scheme.
+Chimera = FALSE
+Hemisphere = TRUE
+patterns_summary <- init_Proportions(Chimera,Hemisphere)
+
+
+CS_colors <- c('#355C7D','#6C5B7B','#C06C84','#F67280','#F8B195')
+Cognitive_System <- c("Aud-L","Aud-R","VT","DM","Att")
+prevalent_patterns(patterns_summary,CS_colors,Cognitive_System)
+
+
+CS_colors <- viridis(6, option = "D")
+Cognitive_System <- c("Aud","CO", "FP", "MS", "SC", "V")
+prevalent_patterns(patterns_summary,CS_colors,Cognitive_System)
+
+```
+
+
+```{r}
+
+# ======================== Fig. 9, 10, 17, & 19 ==============================
+
+
+patterns <- init_Patterns(Chimera)
+
+patterns <- patterns %>% mutate(Age = case_when(
+Age %in% c(67.5, 72.5) ~ "70",
+Age %in% c(77.5, 82.5, 87.5) ~ "80",
+TRUE ~ as.factor(Age) # Keep other ages as is
+))
+
+patterns <- subset(patterns, Cognitive_System %in% c("CO","FP","MS","SC","V"))
+Similarity <- patterns %>% group_by(Age, Cognitive_System) %>% summarise(Similarity = Pattern_Robustness(cur_data()))
+
+p <- ggplot(Similarity,aes(x=as.double(Age),y=Similarity,fill=Cognitive_System)) +
+  geom_line(aes(color=Cognitive_System),linewidth=0.55,alpha=0.4) +
+  geom_point(size=2,stroke=0.9,color='black',shape=21,alpha=1) +
+  scale_fill_manual(values=CS_colors) +
+  scale_color_manual(values=CS_colors) +
+  labs(x = "Cross-Sectional Age (Years)",
+       y = "Pattern Similarity") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size=8),
+    axis.title.x = element_text(size=8),
+    axis.text.y = element_text(size=8),
+    axis.title.y = element_text(size=8),
+    legend.position = 'none')
+ggsave(paste("Aging-Chimeras/Figures/Variance/Similarity.svg",sep=''), plot = p, width = 4.5, height = 2, units = "in")
+
+
+patterns <- subset(patterns, !Age %in% c(7.5,12.5,80))
+
+patterns <- patterns %>% mutate(Age = as.double(Age))
+
+Similarity <- patterns %>% group_by(Age, Cognitive_System) %>% summarise(Similarity = Pattern_Robustness(cur_data()))
+
+
+patterns2 <- init_Patterns(Chimera)
+
+# Create the age group corresponding to: Young, middle-aged, and old-age.
+patterns2 <- patterns2 %>% mutate(Age = case_when(Age < 30 ~ 15,
+  Age >= 60 ~ 70,
+  Age >= 30 & Age < 60 ~ 45))
+
+Similarity_Individual <- patterns2 %>% group_by(Subject, Age, Cognitive_System) %>% summarise(Similarity = Pattern_Robustness(cur_data()))
+
+
+Similarity_Regional <- patterns2 %>% group_by(Brain_Region, Age, Cognitive_System) %>% summarise(Similarity = Pattern_Robustness(cur_data()))
+
+Density_I <- Similarity_Individual %>% group_by(Age,Cognitive_System) %>% summarise(Similarity_I = mean(Similarity,na.rm=TRUE), lower_I = mean_ci(Similarity)[2], upper_I = mean_ci(Similarity)[3])
+Density_R <- Similarity_Regional %>% group_by(Age,Cognitive_System) %>% summarise(Similarity_R = mean(Similarity,na.rm=TRUE), lower_R = mean_ci(Similarity)[2], upper_R = mean_ci(Similarity)[3])
+Density_IR <- bind_cols(Density_I,Density_R['Similarity_R'],Density_R['lower_R'],Density_R['upper_R'])
+
+Density_IR <- subset(Density_IR, Cognitive_System %in% c('Att','Aud','CO','FP','DM',"MS","SC","VT","V"))
+CS_colors <- c("#440154FF","#472D7BFF","#3B528BFF","#2C728EFF","#21908CFF","#27AD81FF","#5DC863FF","#FDE725FF","#AADC32FF")
+
+for (age in c(15,45,70)){
+  p <- ggplot(subset(Density_IR,Age == age),aes(x=Similarity_I,y=Similarity_R,fill=Cognitive_System)) +
+    geom_abline(linetype=2,linewidth=0.5) +
+    geom_errorbar(aes(ymin=lower_R,ymax=upper_R),width=0.03) +
+    geom_errorbarh(aes(xmin=lower_I,xmax=upper_I),height=0.03) +
+    geom_point(color='black',shape=21,size=2,stroke=1) +
+    scale_fill_manual(values=CS_colors) +
+    theme_minimal() +  # Minimal theme
+    theme(
+      axis.text.x = element_text(size = 8),
+      axis.title.x = element_text(size = 8),                       # X-axis title font size
+      axis.title.y = element_text(size = 8),                       # Y-axis title font size
+      axis.text.y = element_text(size = 8),
+      legend.position = 'none') +
+    labs(
+      x = "Individual Robustness",
+      y = "Region Robustness") +
+    xlim(0.4,1.0) +
+    ylim(0.10,1.0)
+  ggsave(paste("Aging-Chimeras/Figures/Variance/IR-Similarity/",CS,"_",age,".svg",sep=''), plot = p, width = 2.05, height = 1.85, units = "in")
+}
+
+
+```
+
+
+```{r}
+
+# ============================= Fig. 14 ====================================
+
+#Apply log10 transformation to the data
+log_data <- log10(patterns_summary$Proportion)
+
+# Calculate mean and standard deviation in log-transformed space
+mean_log <- mean(log_data, na.rm = TRUE)
+std_log <- sd(log_data, na.rm = TRUE)
+
+# Print the results
+cat("Mean (log10 space):", mean_log, "\n")
+cat("Standard Deviation (log10 space):", std_log, "\n")
+
+p <- ggplot(patterns_summary, aes(x = Proportion)) +
+  geom_histogram(aes(y = ..density..),  # Convert to density
+              bins = 20, fill = "steelblue", color = "white", alpha = 0.7) +
+  geom_density(color = "red", linewidth = 1) +  # Overlay density curve
+  geom_vline(xintercept = 10^mean_log, color = "black", linetype = "solid", linewidth = 1) +  # Mean line (back-transformed)
+  geom_vline(xintercept = 10^(mean_log + std_log), color = "black", linetype = "dotted", linewidth = 1) +  # Mean + Std line
+  geom_vline(xintercept = 10^(mean_log - std_log), color = "black", linetype = "dotted", linewidth = 1) +  # Mean - Std line
+  scale_x_log10(breaks = c(0.01, 0.1, 1, 3, 5, 10, 50, 100)) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(size = 8),
+    axis.title.x = element_text(size = 8),
+    axis.text.y = element_text(size = 8),
+    axis.title.y = element_text(size = 8)) +
+  labs(
+    x = "Proportion (log10 scale)",
+    y = "PDF"
+  ) +
+  annotate("text", x = 10^mean_log, y = max(density(log_data)$y), 
+           label = bquote(mu == .(round(10^mean_log, 2))), color = "black", vjust = -1) +
+  annotate("text", x = 10^(mean_log + std_log), y = max(density(log_data)$y), 
+           label = bquote(mu + sigma == .(round(10^(mean_log + std_log), 2))), color = "black", vjust = -1) +
+  annotate("text", x = 10^(mean_log - std_log), y = max(density(log_data)$y), 
+           label = bquote(mu - sigma == .(round(10^(mean_log - std_log), 2))), color = "black", vjust = -1)
+
+ggsave(paste("Aging-Chimeras/Figures/Variance/Pattern Proportion Distribution.svg",sep=''), plot = p, width = 3.3, height = 1.15, units = "in")
+
+```
+
+
+```{r}
+
+#====================== Fig. 16 Aging Network measures =======================
+
+
+
+Network_Age <- function(df,Measures,CS_colors){
+  # ========================================================================
+  #
+  # This function takes each network measure and plots its mean and 95% CIs against age.
+  #
+  # Parameters
+  # -----------
+  #             df: The dataframe containing the network measure data.
+  #       Measures: A list of the names of the measures to be evaluated.
+  #      CS_colors: The cognitive system color-scheme to be used.
+  #
+  # Returns
+  # -------
+  #         Nothing.
+  # 
+  # ========================================================================
+  
+  
+  for (measure in Measures) { 
+    temp <- some_Measures %>% group_by(Age,Cognitive_System) %>%
+      summarise(mean_value = mean(!!sym(measure),na.rm=TRUE),
+                lower = mean_ci(!!sym(measure))[2],
+                upper = mean_ci(!!sym(measure))[3])
+    
+    p <- ggplot(temp, aes(x = Age, y = mean_value)) +
+      geom_point(aes(fill=Cognitive_System),size=2,stroke=0.9,shape=21,alpha=1) +
+      geom_errorbar(aes(ymin = lower, ymax = upper), color='black', width = 1, alpha=0.9) +
+      geom_line(aes(color=Cognitive_System),linewidth=0.55,alpha=0.4) +
+      scale_fill_manual(values=CS_colors) +
+      scale_color_manual(values=CS_colors) +
+      theme_minimal() +
+      theme(
+        axis.text.x = element_text(size=7),
+        axis.title.x = element_text(size=7),
+        axis.text.y = element_text(size=7),
+        axis.title.y = element_text(size=7),
+        legend.position = 'none') +
+      labs(x = "Cross-Sectional Age (Years)", y = measure) 
+    ggsave(paste("Aging-Chimeras/Figures/Network-Measures/",measure,".svg",sep=''), plot = p, width = 4, height = 1.8, units = "in")
+  }
+}
+
+# Names of the measure to be plotted.
+Measures = c("Degree","Strength","Local_Efficiency","Betweenness","Participation_Coefficient","SDRC","Nodal_Efficiency","Within","Between","System_Segregation")
+
+## First, plot these sets of cognitive systems and its respective color scheme.
+# The cognitive system color scheme to be used.
+CS_colors <- c("#440154FF","#443A83FF","#31688EFF","#21908CFF","#35B779FF","#FDE725FF","#8FD744FF")
+AudL <- subset(all_Measures, Cognitive_System == "Aud" & Hemisphere == "L")
+AudL['Cognitive_System'] <- 'Aud-L'
+AudR <- subset(all_Measures, Cognitive_System == "Aud" & Hemisphere == "R")
+AudR['Cognitive_System'] <- 'Aud-R'
+# Build a dataframe containing with the left/right hemisphere auditory cognitive system and the 'CO' 'FP' 'MS' 'VT' 'V' cognitive system.
+temp <- subset(all_Measures, Cognitive_System %in% c('CO','FP','MS','VT','V'))
+df_1 <- bind_rows(AudL,AudR,temp)
+# Combine the old ages.
+df_1 <- df_1 %>% mutate(Age = case_when(
+  Age %in% c(67.5, 72.5) ~ 70,
+  Age %in% c(77.5, 82.5, 87.5) ~ 80,
+  TRUE ~ as.double(Age) # Keep other ages as is
+  ))
+df_1 <- df_1 %>% mutate(Age = as.double(Age)) 
+
+## Second, plot this set of cognitive systems and its respective color scheme.
+CS_colors <- c('#F8B195','#F67280','#C06C84')
+df_2 <- subset(all_Measures, Cognitive_System %in% c('Att','DM','SC'))
+df_2 <- df_2 %>% mutate(Age = case_when(
+Age %in% c(67.5, 72.5) ~ 70,
+Age %in% c(77.5, 82.5, 87.5) ~ 80,
+TRUE ~ as.double(Age) # Keep other ages as is
+))
+df_2 <- df_2 %>% mutate(Age = as.double(Age))
+
+
+Network_Age(df_1,Measures,CS_colors)
+
+
+```
+
+
+```{r}
+
+# ========================= Fig. 18 ========================================
+
+patterns <- init_Patterns(Chimera)
+
+patterns <- patterns %>% mutate(Age_Group = case_when(Age < 30 ~ 15,
+  Age >= 60 ~ 70,
+  Age >= 30 & Age < 60 ~ 45))
+
+patterns <- patterns %>% mutate(Age = case_when(
+Age %in% c(67.5, 72.5) ~ "70",
+Age %in% c(77.5, 82.5, 87.5) ~ "80",
+TRUE ~ as.factor(Age) # Keep other ages as is
+))
+
+patterns <- patterns %>% group_by(Age_Group) %>% group_split() %>%
+  lapply(function(age_group) {
+    # Identify unique subjects
+    unique_subjects <- unique(age_group$Subject)
+    # Sample up to 100 unique subjects
+    sampled_subjects <- sample(unique_subjects, size = min(length(unique_subjects), 100))
+    # Keep all rows for the sampled subjects
+    age_group %>% filter(Subject %in% sampled_subjects)
+  }) %>%
+  bind_rows()
+
+
+patterns_summary <- patterns %>%
+  group_by(Age_Group, Brain_Region, Cognitive_System) %>%
+    summarise(Patterns = list(get_Patterns(cur_data())), .groups = "drop") %>%
+      unnest(Patterns) # Expand the list into separate rows and columns'
+
+patterns_summary <- patterns_summary %>% mutate(Decimal = as.integer(as.character(Decimal)))
+
+# Add a column with the 9-bit binary representation as a string
+patterns_summary <- patterns_summary %>%
+  mutate(Pattern = sapply(Decimal, get_Binary))
+
+chi = 5 
+midchi = 1 
+custom_breaks <- c(midchi, chi, Inf)
+ages = c("Young","Middle","Old")
+
+for (CS in c("Att","Aud","CO","FP","DM","MS","SC","VT","V")) {
+
+  df <- subset(patterns_summary,Cognitive_System==CS)
+  
+  df <- df %>%
+      mutate(Text = case_when(
+          Proportion >= chi ~ "x",
+          Proportion >= midchi & Proportion < chi ~ "o",  
+          TRUE ~ ""))  # Empty otherwise
+  
+  df <- subset(df, Text=='x')
+  
+  for (age in c(15,45,70)){
+    df <- subset(df, Age_Group == 70)
+    
+    df <- df[c('Brain_Region','Proportion','Pattern')]
+    df <- df %>% mutate(Brain_Region = factor(Brain_Region))
+    
+    data <- df
+    
+    # 1. Prepare pattern data
+    pattern_df <- data %>%
+      distinct(Pattern) %>%
+      mutate(Bit = strsplit(Pattern, "")) %>%
+      unnest(Bit) %>%
+      group_by(Pattern) %>%
+      mutate(
+        x_bit = row_number(),  # Position 1-9 for pattern bits
+        y_pattern = factor(Pattern, levels = unique(Pattern)),
+        Bit = as.numeric(Bit)
+      ) %>%
+      ungroup()
+    
+    # 2. Prepare proportion data
+    prop_df <- data %>%
+      complete(Brain_Region, Pattern, fill = list(Proportion = 0)) %>%
+      mutate(
+        y_pattern = factor(Pattern, levels = levels(pattern_df$y_pattern)),
+        x_prop = 9 + as.numeric(Brain_Region)  # Start after 9 pattern columns
+      )
+    
+    
+    # 3. Create header labels
+    headers <- data.frame(
+      x = c(mean(1:9), unique(prop_df$x_prop)),  # Centered labels
+      label = c("Pattern", paste(sort(unique(data$Brain_Region))))
+    )
+    
+    # Create the plot
+    p <- ggplot() +
+      # Pattern blocks (first 9 columns)
+      geom_tile(data = pattern_df,
+               aes(x = x_bit, y = y_pattern, fill = factor(Bit)),
+               color = "white", width = 1, height = 1) +
+      scale_fill_manual(values = c('0' = '#084596', '1' = '#ff4141')) +
+      ggnewscale::new_scale_fill() +  # Reset fill scale for proportions
+      
+      # Proportion colors (remaining columns)
+      geom_tile(data = prop_df,
+               aes(x = x_prop, y = y_pattern, fill = Proportion),
+               color = "white", width = 1, height = 1) +
+      scale_fill_viridis_c(option = "viridis", direction = 1, limits=c(0,60),oob=scales::squish) +
+      
+      # Column headers
+      geom_text(data = headers,
+               aes(x = x, y = Inf, label = label),
+               vjust = -0.5, size = 5, fontface = "bold") +
+      
+      # Coordinate system adjustments
+      scale_x_continuous(
+        breaks = c(1:9, unique(prop_df$x_prop)),
+        labels = c(rep("", 9), paste(sort(unique(data$Brain_Region)))),
+        expand = expansion(0)
+      ) +
+      labs(x = NULL, y = NULL) +
+      theme_minimal() +
+      theme(
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(face = "bold", size = 11, vjust = 0.5),
+        panel.grid = element_blank(),
+        plot.margin = margin(30, 20, 20, 20)
+      ) +
+      coord_cartesian(clip = "off")
+      ggsave(paste("Aging-Chimeras/Figures/Variance/Patterns-Regions/",CS,"-",ages,".svg",sep=''), plot = p, width = 1.8, height = 1.4, units = "in")
+  }
+}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

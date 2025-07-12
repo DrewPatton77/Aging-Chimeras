@@ -1,0 +1,128 @@
+L Thalamus Proper_1
+L Caudate_1
+L Putamen_1
+L Pallidum_1
+L Hippocampus_1
+L Amygdala_1
+L Accumbens area_1
+R Thalamus Proper_1
+R Caudate_1
+R Putamen_1
+R Pallidum_1
+R Hippocampus_1
+R Amygdala_1
+R Accumbens area_1
+L bankssts_1
+L caudal anterior cingulate_1
+L caudal middle frontal_1
+L cuneus_1
+L entorhinal_1
+L fusiform_1
+L fusiform_2
+L inferior parietal_1
+L inferior parietal_2
+L inferior temporal_1
+L inferior temporal_2
+L isthmus cingulate_1
+L lateral occipital_1
+L lateral occipital_2
+L lateral orbitofrontal_1
+L lateral orbitofrontal_2
+L lingual_1
+L lingual_2
+L medial orbitofrontal_1
+L middle temporal_1
+L middle temporal_2
+L parahippocampal_1
+L paracentral_1
+L pars opercularis_1
+L pars orbitalis_1
+L pars triangularis_1
+L pericalcarine_1
+L postcentral_1
+L postcentral_2
+L postcentral_3
+L posterior cingulate_1
+L precentral_1
+L precentral_2
+L precentral_3
+L precentral_4
+L precuneus_1
+L precuneus_2
+L rostral anterior cingulate_1
+L rostral middle frontal_1
+L rostral middle frontal_2
+L rostral middle frontal_3
+L superior frontal_1
+L superior frontal_2
+L superior frontal_3
+L superior frontal_4
+L superior parietal_1
+L superior parietal_2
+L superior parietal_3
+L superior temporal_1
+L superior temporal_2
+L supramarginal_1
+L supramarginal_2
+L frontal pole_1
+L temporal pole_1
+L transverse temporal_1
+L insula_1
+L insula_2
+R bankssts_1
+R caudal anterior cingulate_1
+R caudal middle frontal_1
+R cuneus_1
+R entorhinal_1
+R fusiform_1
+R fusiform_2
+R inferior parietal_1
+R inferior parietal_2
+R inferior parietal_3
+R inferior temporal_1
+R inferior temporal_2
+R isthmus cingulate_1
+R lateral occipital_1
+R lateral occipital_2
+R lateral occipital_3
+R lateral orbitofrontal_1
+R lateral orbitofrontal_2
+R lingual_1
+R lingual_2
+R medial orbitofrontal_1
+R medial orbitofrontal_2
+R middle temporal_1
+R middle temporal_2
+R parahippocampal_1
+R paracentral_1
+R pars opercularis_1
+R pars orbitalis_1
+R pars triangularis_1
+R pericalcarine_1
+R postcentral_1
+R postcentral_2
+R posterior cingulate_1
+R precentral_1
+R precentral_2
+R precentral_3
+R precuneus_1
+R precuneus_2
+R rostral anterior cingulate_1
+R rostral middle frontal_1
+R rostral middle frontal_2
+R superior frontal_1
+R superior frontal_2
+R superior frontal_3
+R superior frontal_4
+R superior parietal_1
+R superior parietal_2
+R superior parietal_3
+R superior temporal_1
+R superior temporal_2
+R supramarginal_1
+R supramarginal_2
+R frontal pole_1
+R temporal pole_1
+R transverse temporal_1
+R insula_1
+R insula_2
