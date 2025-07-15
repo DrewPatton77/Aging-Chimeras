@@ -26,5 +26,5 @@ The healthy brain relies on a dynamic balance between two complementary processe
  * [Data](./Data)
  * [Figures](./Figures)
  * [Important_Files](./Important_Files)
-   * [] 
+   * [Brain Region Labels 10K.txt](./Brain_Region_Labels_10K.txt) 
 
