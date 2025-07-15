@@ -12,7 +12,7 @@ The healthy brain relies on a dynamic balance between two complementary processe
 
 # Folder Description
 
-* [Code](./Code-md)
+* [Code](./Code)
  * [dir2](./dir2)
    * [file21.ext](./dir2/file21.ext)
    * [file22.ext](./dir2/file22.ext)
