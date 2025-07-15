@@ -13,14 +13,18 @@ The healthy brain relies on a dynamic balance between two complementary processe
 # Folder Description
 
 * [Code](./Code)
- * [dir2](./dir2)
-   * [file21.ext](./dir2/file21.ext)
-   * [file22.ext](./dir2/file22.ext)
-   * [file23.ext](./dir2/file23.ext)
- * [dir1](./dir1)
-   * [file11.ext](./dir1/file11.ext)
-   * [file12.ext](./dir1/file12.ext)
- * [file_in_root.ext](./file_in_root.ext)
- * [README.md](./README.md)
- * [dir3](./dir3)
+ * [Wilson-Cowan-Simulator](./Analysis)
+   * [getC5crit.m](./getC5Crit.m)
+   * [get_WC_Dynamics.m](./get_WC_Dynamics.m)
+   * [getWC.m](./getWC.m)
+ * [Matlab](./dir2/file21.ext)
+   * [get_Patterns.m](./get_Patterns.m)
+   * [Tables.m](./Tables.m)
+   * [Tables_Synchrony_Patterns.m](./Tables_Synchrony_Patterns.m)
+ * [Analysis](./dir2/file22.ext)
+   * [Analysis.Rmd](./Analysis.Rmd)   
+ * [Data](./Data)
+ * [Figures](./Figures)
+ * [Important_Files](./Important_Files)
+   * [] 
 
