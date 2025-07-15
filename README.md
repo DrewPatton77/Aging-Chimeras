@@ -14,6 +14,7 @@ The healthy brain relies on a dynamic balance between two complementary processe
 
 * [Code](./Code)
  * [Wilson-Cowan-Simulator](./Analysis)
+   This folder contains the `.m` matlab files to obtain the critical 'CE' and the synchrony matrices.   
    * [getC5crit.m](./getC5Crit.m)
    * [get_WC_Dynamics.m](./get_WC_Dynamics.m)
    * [getWC.m](./getWC.m)
